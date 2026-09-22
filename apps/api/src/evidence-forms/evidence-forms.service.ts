@@ -214,27 +214,73 @@ export class EvidenceFormsService {
   }
 
   /**
-   * Walk submission data and regenerate fresh presigned URLs for any file fields.
-   * File fields are objects with { fileKey, downloadUrl, fileName }.
+   * Find top-level submission fields shaped like a file field, i.e. objects
+   * with a string `fileKey` (e.g. { fileKey, downloadUrl, fileName }).
    */
-  private async refreshFileUrls(
+  private findFileFieldEntries(
     data: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const refreshed: Record<string, unknown> = { ...data };
-
-    for (const [key, value] of Object.entries(refreshed)) {
-      if (
-        value &&
-        typeof value === 'object' &&
-        'fileKey' in value &&
-        typeof (value as Record<string, unknown>).fileKey === 'string'
-      ) {
-        const fileObj = value as Record<string, unknown>;
-        const freshUrl = await this.attachmentsService.getPresignedDownloadUrl(
-          fileObj.fileKey as string,
+  ): Array<[string, Record<string, unknown>]> {
+    return Object.entries(data).filter(
+      (entry): entry is [string, Record<string, unknown>] => {
+        const value = entry[1];
+        return (
+          !!value &&
+          typeof value === 'object' &&
+          'fileKey' in value &&
+          typeof (value as Record<string, unknown>).fileKey === 'string'
         );
-        refreshed[key] = { ...fileObj, downloadUrl: freshUrl };
+      },
+    );
+  }
+
+  /**
+   * Reject a submission whose file fields reference an attachment key
+   * outside the caller's own organization namespace
+   * (`${organizationId}/attachments/...`). Without this check a caller
+   * could submit another org's fileKey and have it presigned on read.
+   */
+  private assertFileKeysBelongToOrganization(params: {
+    data: Record<string, unknown>;
+    organizationId: string;
+  }): void {
+    const { data, organizationId } = params;
+    const orgPrefix = `${organizationId}/`;
+
+    for (const [, fileObj] of this.findFileFieldEntries(data)) {
+      const fileKey = fileObj.fileKey as string;
+      if (!fileKey.startsWith(orgPrefix)) {
+        throw new BadRequestException(
+          'Submitted file does not belong to this organization',
+        );
       }
+    }
+  }
+
+  /**
+   * Walk submission data and regenerate fresh presigned URLs for any file
+   * fields. Skips presigning (and clears the download URL) for any stored
+   * fileKey outside the caller's organization namespace, since legacy or
+   * tampered rows may not have passed `assertFileKeysBelongToOrganization`.
+   */
+  private async refreshFileUrls(params: {
+    data: Record<string, unknown>;
+    organizationId: string;
+  }): Promise<Record<string, unknown>> {
+    const { data, organizationId } = params;
+    const refreshed: Record<string, unknown> = { ...data };
+    const orgPrefix = `${organizationId}/`;
+
+    for (const [key, fileObj] of this.findFileFieldEntries(data)) {
+      const fileKey = fileObj.fileKey as string;
+
+      if (!fileKey.startsWith(orgPrefix)) {
+        refreshed[key] = { ...fileObj, downloadUrl: null };
+        continue;
+      }
+
+      const freshUrl =
+        await this.attachmentsService.getPresignedDownloadUrl(fileKey);
+      refreshed[key] = { ...fileObj, downloadUrl: freshUrl };
     }
 
     return refreshed;
@@ -403,9 +449,10 @@ export class EvidenceFormsService {
 
     const submissionsWithFreshUrls = await Promise.all(
       paginated.map(async (submission) => {
-        const refreshedData = await this.refreshFileUrls(
-          submission.data as Record<string, unknown>,
-        );
+        const refreshedData = await this.refreshFileUrls({
+          data: submission.data as Record<string, unknown>,
+          organizationId,
+        });
         return normalizeSubmissionFormType({
           ...submission,
           data: refreshedData,
@@ -461,9 +508,10 @@ export class EvidenceFormsService {
       throw new NotFoundException('Submission not found');
     }
 
-    const refreshedData = await this.refreshFileUrls(
-      submission.data as Record<string, unknown>,
-    );
+    const refreshedData = await this.refreshFileUrls({
+      data: submission.data as Record<string, unknown>,
+      organizationId: params.organizationId,
+    });
 
     return {
       form: evidenceFormDefinitions[parsedType.data],
@@ -567,6 +615,11 @@ export class EvidenceFormsService {
 
       throw new BadRequestException(message);
     }
+
+    this.assertFileKeysBelongToOrganization({
+      data: parsedPayload.data,
+      organizationId: params.organizationId,
+    });
 
     const submission = await db.evidenceSubmission
       .create({
