@@ -53,8 +53,9 @@ export async function GET(req: NextRequest) {
     let pdfUrl: string | null = null;
 
     if (versionId) {
+      // IMPORTANT: scope the lookup to this policy to prevent cross-policy/cross-org access
       const version = await db.policyVersion.findUnique({
-        where: { id: versionId },
+        where: { id: versionId, policyId },
         select: { pdfUrl: true },
       });
       pdfUrl = version?.pdfUrl ?? null;

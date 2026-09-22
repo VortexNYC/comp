@@ -49,7 +49,11 @@ export async function POST(req: NextRequest) {
         where: { id: policyId },
       });
 
-      if (policy && !policy.signedBy.includes(memberId)) {
+      if (!policy || policy.organizationId !== member.organizationId) {
+        return null;
+      }
+
+      if (!policy.signedBy.includes(memberId)) {
         return db.policy.update({
           where: { id: policyId },
           data: {
