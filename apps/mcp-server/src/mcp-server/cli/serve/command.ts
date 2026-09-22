@@ -21,6 +21,13 @@ export const serveCommand = buildCommand({
         parse: (val: string) =>
           z.coerce.number().int().gte(0).lt(65536).parse(val),
       },
+      host: {
+        kind: "parsed",
+        brief:
+          "The bind address for the HTTP server. Defaults to 127.0.0.1 (local-only); setting this to 0.0.0.0 exposes the server on the network.",
+        default: "127.0.0.1",
+        parse: (val: string) => z.string().parse(val),
+      },
       "disable-static-auth": {
         kind: "boolean",
         brief:
