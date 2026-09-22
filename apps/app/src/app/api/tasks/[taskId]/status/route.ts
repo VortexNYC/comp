@@ -29,6 +29,14 @@ export async function GET(
       return NextResponse.json({ error: 'Run not found' }, { status: 404 });
     }
 
+    // Ownership check: every run we legitimately trigger is tagged with its
+    // owning organization's id. A run with no matching tag either belongs to
+    // another tenant or was never tagged, so it's not ours to read — return
+    // the same 404 as a genuinely missing run to avoid leaking existence.
+    if (!run.tags.includes(session.session.activeOrganizationId)) {
+      return NextResponse.json({ error: 'Run not found' }, { status: 404 });
+    }
+
     return NextResponse.json({
       status: run.status,
       output: run.output,
@@ -57,4 +65,3 @@ export async function GET(
     );
   }
 }
-

@@ -32,11 +32,15 @@ export async function startBatchFix(
     const batchId = batchResp.data.data.id;
 
     // Step 2: Trigger the API-layer task
-    const handle = await tasks.trigger('remediate-batch', {
-      batchId,
-      organizationId: input.organizationId,
-      connectionId: input.connectionId,
-    });
+    const handle = await tasks.trigger(
+      'remediate-batch',
+      {
+        batchId,
+        organizationId: input.organizationId,
+        connectionId: input.connectionId,
+      },
+      { tags: [input.organizationId] },
+    );
 
     // Step 3: Store triggerRunId on the batch
     await api.patch(`/v1/cloud-security/remediation/batch/${batchId}`, {
