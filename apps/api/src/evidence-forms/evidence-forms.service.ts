@@ -58,8 +58,21 @@ const EVIDENCE_FORM_DELETE_ROLES = ['owner', 'admin'] as const;
 const MAX_UPLOAD_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const MAX_UPLOAD_BASE64_LENGTH = Math.ceil(MAX_UPLOAD_FILE_SIZE_BYTES / 3) * 4;
 
+// Prefix values that spreadsheet apps would parse as formulas so exported
+// CSVs can't carry executable content (CSV formula injection, GH-097).
+// Excel/Sheets strip the surrounding quotes before evaluating, so quoting
+// alone is not a mitigation.
+function neutralizeFormula(value: string): string {
+  if (/^[=+\-@\t\r]/.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
 function toCsvRow(values: string[]): string {
-  return values.map((value) => `"${value.replace(/"/g, '""')}"`).join(',');
+  return values
+    .map((value) => `"${neutralizeFormula(value).replace(/"/g, '""')}"`)
+    .join(',');
 }
 
 function flattenValue(value: unknown): string {
