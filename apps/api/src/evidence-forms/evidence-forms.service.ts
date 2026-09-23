@@ -61,9 +61,11 @@ const MAX_UPLOAD_BASE64_LENGTH = Math.ceil(MAX_UPLOAD_FILE_SIZE_BYTES / 3) * 4;
 // Prefix values that spreadsheet apps would parse as formulas so exported
 // CSVs can't carry executable content (CSV formula injection, GH-097).
 // Excel/Sheets strip the surrounding quotes before evaluating, so quoting
-// alone is not a mitigation.
+// alone is not a mitigation. Line feed is included: some parsers trim
+// leading whitespace before evaluating, so a "\n=..." value could still
+// execute.
 function neutralizeFormula(value: string): string {
-  if (/^[=+\-@\t\r]/.test(value)) {
+  if (/^[=+\-@\t\r\n]/.test(value)) {
     return `'${value}`;
   }
   return value;

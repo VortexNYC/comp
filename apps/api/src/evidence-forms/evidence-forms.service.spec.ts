@@ -355,6 +355,18 @@ describe('EvidenceFormsService', () => {
           },
         },
         {
+          id: 'sub_newline',
+          submittedAt: new Date('2026-09-18T00:30:00.000Z'),
+          submittedBy: { name: 'Mallory', email: 'mallory@example.com' },
+          data: {
+            submissionDate: '2026-09-18',
+            incidentDate: '2026-09-18',
+            complaintDetails: '\n=HYPERLINK("https://evil.example","x")',
+            individualsInvolved: 'Mallory',
+            evidence: 'x',
+          },
+        },
+        {
           id: 'sub_benign',
           submittedAt: new Date('2026-09-18T01:00:00.000Z'),
           submittedBy: { name: 'Alice', email: 'alice@example.com' },
@@ -374,17 +386,23 @@ describe('EvidenceFormsService', () => {
         authContext,
       });
 
+      // The sub_newline row carries an embedded newline inside a quoted
+      // cell, so a naive split on \n yields 5 pieces, not 4.
       const lines = csv.split('\n');
-      expect(lines).toHaveLength(3);
+      expect(lines).toHaveLength(5);
       // Every formula-leading value is prefixed with a single quote so
       // Excel/Sheets render it as text instead of evaluating it.
       expect(lines[1]).toContain(`"'=cmd|' /C calc'!A0"`);
       expect(lines[1]).toContain('"\'+SUM(A1:A2)"');
       expect(lines[1]).toContain('"\'-10+20"');
-      expect(lines[2]).toContain(`"'@channel please review"`);
+      // A leading line feed must not smuggle a formula past the check:
+      // the quote prefix lands before the \n so nothing evaluates it.
+      expect(lines[2].endsWith(',"\'')).toBe(true);
+      expect(lines[3]).toContain('=HYPERLINK(""https://evil.example"",""x"")');
+      expect(lines[4]).toContain(`"'@channel please review"`);
       // Benign values stay untouched; embedded-quote escaping is unchanged.
-      expect(lines[2]).toContain('"Bob and Carol"');
-      expect(lines[2]).toContain('He said ""hi""');
+      expect(lines[4]).toContain('"Bob and Carol"');
+      expect(lines[4]).toContain('He said ""hi""');
     });
 
     it('rejects export for reviewers without privileged evidence access', async () => {
