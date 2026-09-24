@@ -24,6 +24,14 @@ function isLocalhostUrl(connectionString: string): boolean {
   }
 }
 
+function isSslModeDisabled(connectionString: string): boolean {
+  try {
+    return new URL(connectionString).searchParams.get('sslmode') === 'disable';
+  } catch {
+    return false;
+  }
+}
+
 function createPrismaClient(): PrismaClient {
   const rawUrl = process.env.DATABASE_URL!;
   const isLocalhost = isLocalhostUrl(rawUrl);
@@ -45,6 +53,11 @@ function createPrismaClient(): PrismaClient {
     | { checkServerIdentity: () => undefined }
     | { rejectUnauthorized: false };
   if (isLocalhost) {
+    ssl = undefined;
+  } else if (isSslModeDisabled(rawUrl)) {
+    // Explicit per-connection opt-out — plain TCP for databases that never
+    // terminate TLS or use certs we can't verify (e.g. Postgres on Railway's
+    // private network with sslmode=disable).
     ssl = undefined;
   } else if (hasCABundle) {
     // Verified TLS: rely on Node's TLS context (NODE_EXTRA_CA_CERTS adds the AWS
