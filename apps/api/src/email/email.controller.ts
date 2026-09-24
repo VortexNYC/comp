@@ -13,6 +13,7 @@ import { RequirePermission } from '../auth/require-permission.decorator';
 import { SkipAuditLog } from '../audit/skip-audit-log.decorator';
 import { SendEmailDto } from './dto/send-email.dto';
 import { SendBatchEmailDto } from './dto/send-batch-email.dto';
+import { sendEmailHtml } from './resend';
 import type { sendEmailTask } from '../trigger/email/send-email';
 import type { sendBatchEmailTask } from '../trigger/email/send-batch-email';
 
@@ -33,6 +34,21 @@ export class EmailController {
   })
   @ApiResponse({ status: 200, description: 'Email task triggered' })
   async sendEmail(@Body() dto: SendEmailDto) {
+    if (!process.env.TRIGGER_SECRET_KEY) {
+      const result = await sendEmailHtml({
+        to: dto.to,
+        subject: dto.subject,
+        html: dto.html,
+        from:
+          dto.from ??
+          (dto.system ? process.env.RESEND_FROM_SYSTEM : undefined),
+        cc: dto.cc,
+        scheduledAt: dto.scheduledAt,
+        attachments: dto.attachments,
+      });
+      return { success: true, emailId: result.id };
+    }
+
     const handle = await tasks.trigger<typeof sendEmailTask>('send-email', {
       to: dto.to,
       subject: dto.subject,
@@ -66,6 +82,15 @@ export class EmailController {
       from: email.from ?? fromAddress,
       cc: email.cc,
     }));
+
+    if (!process.env.TRIGGER_SECRET_KEY) {
+      const emailIds: (string | undefined)[] = [];
+      for (const email of emails) {
+        const result = await sendEmailHtml(email);
+        emailIds.push(result.id);
+      }
+      return { success: true, emailIds };
+    }
 
     const handle = await tasks.trigger<typeof sendBatchEmailTask>(
       'send-batch-email',

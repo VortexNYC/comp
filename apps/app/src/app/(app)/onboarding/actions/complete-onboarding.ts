@@ -194,26 +194,33 @@ export const completeOnboarding = authActionClientWithoutOrg
         update: {},
       });
 
-      // Now trigger the jobs that were skipped during minimal creation
-      const handle = await tasks.trigger<typeof onboardOrganizationTask>('onboard-organization', {
-        organizationId: parsedInput.organizationId,
-      });
+      // Now trigger the jobs that were skipped during minimal creation.
+      // Self-hosted instances may not run Trigger.dev — without a secret key,
+      // skip job dispatch entirely; the org is already marked complete.
+      let triggerHandle: { id: string; publicAccessToken: string } | undefined;
 
-      // Update onboarding record with job ID
-      await db.onboarding.update({
-        where: {
+      if (process.env.TRIGGER_SECRET_KEY) {
+        const handle = await tasks.trigger<typeof onboardOrganizationTask>('onboard-organization', {
           organizationId: parsedInput.organizationId,
-        },
-        data: { triggerJobId: handle.id },
-      });
+        });
+        triggerHandle = handle;
 
-      // Set cookie for job tracking
-      (await cookies()).set('publicAccessToken', handle.publicAccessToken);
+        // Update onboarding record with job ID
+        await db.onboarding.update({
+          where: {
+            organizationId: parsedInput.organizationId,
+          },
+          data: { triggerJobId: handle.id },
+        });
 
-      // Create Fleet Label
-      await tasks.trigger<typeof createFleetLabelForOrg>('create-fleet-label-for-org', {
-        organizationId: parsedInput.organizationId,
-      });
+        // Set cookie for job tracking
+        (await cookies()).set('publicAccessToken', handle.publicAccessToken);
+
+        // Create Fleet Label
+        await tasks.trigger<typeof createFleetLabelForOrg>('create-fleet-label-for-org', {
+          organizationId: parsedInput.organizationId,
+        });
+      }
 
       // Revalidate paths
       const headersList = await headers();
@@ -226,8 +233,8 @@ export const completeOnboarding = authActionClientWithoutOrg
 
       return {
         success: true,
-        handle: handle.id,
-        publicAccessToken: handle.publicAccessToken,
+        handle: triggerHandle?.id,
+        publicAccessToken: triggerHandle?.publicAccessToken,
         organizationId: parsedInput.organizationId,
         redirectUrl: `/${parsedInput.organizationId}/`,
       };

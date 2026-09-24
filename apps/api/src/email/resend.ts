@@ -93,3 +93,55 @@ export const sendEmail = async ({
     throw error instanceof Error ? error : new Error('Failed to send email');
   }
 };
+
+export const sendEmailHtml = async ({
+  to,
+  subject,
+  html,
+  from,
+  cc,
+  scheduledAt,
+  attachments,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+  from?: string;
+  cc?: string | string[];
+  scheduledAt?: string;
+  attachments?: EmailAttachment[];
+}) => {
+  if (!resend) {
+    throw new Error('Resend not initialized - missing API key');
+  }
+
+  const fromAddress = from ?? process.env.RESEND_FROM_DEFAULT;
+
+  if (!fromAddress) {
+    throw new Error('Missing FROM address in environment variables');
+  }
+
+  const { data, error } = await resend.emails.send({
+    from: fromAddress,
+    to,
+    cc,
+    subject,
+    html,
+    scheduledAt,
+    attachments: attachments?.map((att) => ({
+      filename: att.filename,
+      content: att.content,
+      contentType: att.contentType,
+    })),
+  });
+
+  if (error) {
+    console.error('Resend API error:', error);
+    throw new Error(`Failed to send email: ${error.message}`);
+  }
+
+  return {
+    message: 'Email sent successfully',
+    id: data?.id,
+  };
+};

@@ -2,7 +2,7 @@ import { render } from '@react-email/render';
 import { tasks } from '@trigger.dev/sdk';
 import type { ReactElement } from 'react';
 import type { EmailChannel, sendEmailTask } from '../trigger/email/send-email';
-import type { EmailAttachment } from './resend';
+import { sendEmail, type EmailAttachment } from './resend';
 
 type TriggerEmailFlags = {
   marketing?: boolean;
@@ -29,6 +29,22 @@ export async function triggerEmail(params: {
   attachments?: EmailAttachment[];
 }): Promise<{ id: string }> {
   try {
+    // Self-hosted deployments may not run Trigger.dev — without a secret key,
+    // send synchronously through Resend instead of the queued task.
+    if (!process.env.TRIGGER_SECRET_KEY) {
+      const result = await sendEmail({
+        to: params.to,
+        subject: params.subject,
+        react: params.react,
+        marketing: params.marketing,
+        system: params.system || params.trustPortal,
+        cc: params.cc,
+        scheduledAt: params.scheduledAt,
+        attachments: params.attachments,
+      });
+      return { id: result.id ?? '' };
+    }
+
     const html = await render(params.react);
 
     const channel = resolveChannel(params);
