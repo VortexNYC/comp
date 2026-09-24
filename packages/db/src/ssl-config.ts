@@ -17,11 +17,22 @@ function isLocalhostUrl(connectionString: string): boolean {
   }
 }
 
+function isSslModeDisabled(connectionString: string): boolean {
+  try {
+    return new URL(connectionString).searchParams.get('sslmode') === 'disable';
+  } catch {
+    return false;
+  }
+}
+
 export function resolveSslConfig(
   databaseUrl: string,
   env: Partial<NodeJS.ProcessEnv> = process.env,
 ): SslConfig {
   if (isLocalhostUrl(databaseUrl)) return undefined;
+  // Plain TCP for databases that never terminate TLS — e.g. Postgres on a
+  // private network (Railway *.railway.internal) with sslmode=disable.
+  if (isSslModeDisabled(databaseUrl)) return undefined;
   if (env.PRISMA_ALLOW_INSECURE_TLS === '1') return { rejectUnauthorized: false };
   // Verified TLS via Node's default trust store, which includes Amazon Root
   // CA 1 — where AWS RDS Proxy chains terminate. Hostname check is skipped

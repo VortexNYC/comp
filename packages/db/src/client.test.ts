@@ -14,6 +14,15 @@ describe('resolveSslConfig', () => {
     expect(resolveSslConfig('postgresql://u:p@[::1]:5432/x', {})).toBeUndefined();
   });
 
+  it('returns undefined when the URL has sslmode=disable', () => {
+    expect(
+      resolveSslConfig(
+        'postgresql://u:p@postgres.railway.internal:5432/comp?sslmode=disable',
+        {},
+      ),
+    ).toBeUndefined();
+  });
+
   it('returns rejectUnauthorized:false when PRISMA_ALLOW_INSECURE_TLS=1', () => {
     expect(
       resolveSslConfig('postgresql://u:p@db.prod.example.com:5432/x', {
