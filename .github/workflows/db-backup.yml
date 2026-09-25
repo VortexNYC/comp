@@ -1,0 +1,53 @@
+name: db-backup
+# Self-hosted ops workflow: daily pg_dump of the Railway Postgres to Cloudflare R2.
+# Fork-only workflow — not part of upstream CI.
+on:
+  schedule:
+    - cron: '15 8 * * *' # 08:15 UTC daily
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install postgres client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Dump database
+        env:
+          COMP_DB_URL: ${{ secrets.COMP_DB_URL }}
+        run: |
+          TS=$(date -u +%Y%m%d-%H%M%S)
+          pg_dump "$COMP_DB_URL" -Fc --no-owner --no-privileges -f "comp-$TS.dump"
+          ls -lh "comp-$TS.dump"
+          echo "DUMP=comp-$TS.dump" >> "$GITHUB_ENV"
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          aws s3 cp "$DUMP" "s3://comp-backups/postgres/$DUMP" \
+            --endpoint-url "$R2_ENDPOINT"
+          aws s3 ls "s3://comp-backups/postgres/" --endpoint-url "$R2_ENDPOINT" | tail -5
+
+      - name: Prune backups older than 30 days
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          CUTOFF=$(date -u -d '30 days ago' +%Y%m%d)
+          aws s3 ls "s3://comp-backups/postgres/" --endpoint-url "$R2_ENDPOINT" \
+            | awk '{print $4}' | grep -oE 'comp-[0-9]{8}' | sort -u \
+            | while read -r key; do
+                d=${key#comp-}
+                if [ "$d" -lt "$CUTOFF" ]; then
+                  aws s3 rm "s3://comp-backups/postgres/${key}"* --endpoint-url "$R2_ENDPOINT"
+                  echo "pruned $key"
+                fi
+              done
