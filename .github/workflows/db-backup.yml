@@ -22,7 +22,7 @@ jobs:
           COMP_DB_URL: ${{ secrets.COMP_DB_URL }}
         run: |
           TS=$(date -u +%Y%m%d-%H%M%S)
-          pg_dump "$COMP_DB_URL" -Fc --no-owner --no-privileges -f "comp-$TS.dump"
+          /usr/lib/postgresql/18/bin/pg_dump "$COMP_DB_URL" -Fc --no-owner --no-privileges -f "comp-$TS.dump"
           ls -lh "comp-$TS.dump"
           echo "DUMP=comp-$TS.dump" >> "$GITHUB_ENV"
 
