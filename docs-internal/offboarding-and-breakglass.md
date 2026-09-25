@@ -52,3 +52,26 @@ The single worst orphan risk is the **GitHub org** — code, deploys trigger, se
 - Offboarding checklist: run on **every** contractor departure (it's a 15-min checkbox pass).
 - Break-glass: set up once, verify yearly.
 - These live here because CompAI tracks the recurring tasks — file a Pile ticket each time the checklist runs so there's an audit trail (access-review evidence).
+
+## Addendum — no second human exists (2026-09-25)
+
+There is no trusted second person to name as break-glass admin today. So the
+fallback isn't a person — it's **documented recovery paths**:
+
+1. **Billing-identity recovery** — every account here (GitHub, Cloudflare,
+   Railway, PlanetScale, Resend, Finix, PostHog) recovers through the billing
+   email + payment method. Whoever controls `shlomo@vortex.nyc` + the card can
+   reclaim everything. That makes the mailbox the real break-glass asset —
+   protect it accordingly (it already has MFA + recovery).
+2. **Domain control** — `vortex.nyc` DNS/registrar access gates everything else
+   (email → account recovery → infra). Registrar is the deepest root.
+3. **Emergency kit option** — if a trusted person appears later (lawyer,
+   cofounder, family): give them a sealed pointer — "ask GitHub/CF support,
+   identity = billing email + card, runbook lives in VortexNYC/comp
+   docs-internal/" — no secrets needed in advance.
+4. **1Password** — no org-admin recovery for a solo vault; keep the Emergency
+   Kit PDF accessible somewhere durable offline.
+
+Accepted risk: with zero second humans, total unavailability = eventual account
+decay. Mitigations above make recovery *possible* rather than *impossible*.
+Revisit when the first real collaborator exists.
