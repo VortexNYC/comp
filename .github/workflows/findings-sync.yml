@@ -1,0 +1,35 @@
+name: findings-sync
+# Fork-only ops workflow (COMP-5): every 30min, new open CompAI findings become
+# Pile issues on the owning team's board. State tracked in ops/findings-sync.json.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run findings→Pile sync
+        env:
+          COMP_API_URL: https://api.comp.vortex.nyc
+          COMP_KEY_VORTEX: ${{ secrets.COMP_KEY_VORTEX }}
+          COMP_KEY_VEIL: ${{ secrets.COMP_KEY_VEIL }}
+          COMP_KEY_SEAL: ${{ secrets.COMP_KEY_SEAL }}
+          COMP_KEY_PILE: ${{ secrets.COMP_KEY_PILE }}
+          PILE_API_KEY: ${{ secrets.PILE_API_KEY }}
+        run: node ops/findings-sync.mjs
+
+      - name: Commit sync state
+        run: |
+          git config user.name "vortex-ops-bot"
+          git config user.email "ops@vortex.nyc"
+          git add ops/findings-sync.json
+          git diff --cached --quiet || git commit -m "ops: findings-sync state [skip ci]"
+          git push
