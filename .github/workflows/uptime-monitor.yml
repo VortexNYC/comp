@@ -1,0 +1,64 @@
+name: uptime-monitor
+# Fork-only ops workflow: checks product health endpoints and emails on failure.
+# GitHub cron granularity is ~10-15min and can coalesce — good enough for a
+# solo operator; upgrade to a dedicated monitor (CF Workers cron) if needed.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+    steps:
+      - name: Check endpoints
+        run: |
+          set +e
+          FAILS=""
+          check() {
+            name="$1"; url="$2"
+            code=$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$url" 2>/dev/null)
+            echo "$name  $url  -> $code"
+            case "$code" in
+              2*|3*) ;;
+              *) FAILS="$FAILS\n- $name ($url) returned $code" ;;
+            esac
+          }
+          check "comp-api"   https://api.comp.vortex.nyc/v1/health
+          check "comp-app"   https://comp.vortex.nyc/
+          check "seal-api"   https://api.seal.nyc/health
+          check "seal-app"   https://app.seal.nyc/
+          check "pile"       https://pile.nyc/health
+          check "vortex-api" https://api.vortex.nyc/health
+          check "veil"       https://veil.nyc/health
+
+          if [ -n "$FAILS" ]; then
+            echo "FAILURES:$FAILS"
+            printf '%s' "$FAILS" > /tmp/fails.txt
+            exit 1
+          fi
+          echo "all endpoints healthy"
+
+      - name: Send alert email
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          body = open('/tmp/fails.txt').read() if os.path.exists('/tmp/fails.txt') else 'see run log'
+          payload = {
+              "from": "alerts@vortex.nyc",
+              "to": os.environ["ALERT_EMAIL"],
+              "subject": "[vortex] health check failure",
+              "text": "Health check failures detected:\n" + body + "\n\nRun: https://github.com/VortexNYC/comp/actions/workflows/uptime-monitor.yml",
+          }
+          req = urllib.request.Request(
+              "https://api.resend.com/emails",
+              data=json.dumps(payload).encode(),
+              headers={"Authorization": f"Bearer {os.environ['RESEND_API_KEY']}", "Content-Type": "application/json"},
+          )
+          print(urllib.request.urlopen(req).status)
+          PY
